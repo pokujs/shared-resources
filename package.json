@@ -1,6 +1,6 @@
 {
   "name": "@pokujs/shared-resources",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "private": false,
   "description": "🪢 A Poku plugin for shared resources across isolated tests.",
   "main": "./lib/index.js",
