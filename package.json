@@ -1,6 +1,6 @@
 {
   "name": "@pokujs/shared-resources",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "description": "🪢 A Poku plugin for shared resources across isolated tests.",
   "main": "./lib/index.js",
@@ -40,7 +40,7 @@
     "@biomejs/biome": "^1.9.4",
     "@ianvs/prettier-plugin-sort-imports": "^4.7.0",
     "@types/node": "^25.3.3",
-    "poku": "file:../../poku",
+    "poku": "^3.0.3-canary.68e71482",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
