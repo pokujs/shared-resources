@@ -13,7 +13,7 @@ Enjoying **Poku**? [Give him a star to show your support](https://github.com/wel
 
 ---
 
-🪢 [**@pokujs/shared-resources**](https://github.com/pokujs/plugin-shared-resources) is a **Poku** plugin for shared resources across isolated tests.
+🪢 [**@pokujs/shared-resources**](https://github.com/pokujs/shared-resources) is a **Poku** plugin for shared resources across isolated tests.
 
 > [!TIP]
 >

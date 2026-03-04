@@ -1,22 +1,22 @@
 {
   "name": "@pokujs/shared-resources",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "🪢 A Poku plugin for shared resources across isolated tests.",
   "main": "./lib/index.js",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pokujs/plugin-shared-resources.git"
+    "url": "git+https://github.com/pokujs/shared-resources.git"
   },
   "homepage": "https://poku.io/docs/documentation/helpers/shared-resources",
   "bugs": {
-    "url": "https://github.com/pokujs/plugin-shared-resources/issues"
+    "url": "https://github.com/pokujs/shared-resources/issues"
   },
   "author": "https://github.com/wellwelwel",
   "funding": {
     "type": "github",
-    "url": "https://github.com/wellwelwel/shared-resources?sponsor=1"
+    "url": "https://github.com/pokujs/shared-resources?sponsor=1"
   },
   "files": [
     "lib"
