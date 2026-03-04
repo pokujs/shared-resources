@@ -23,7 +23,7 @@ jobs:
         uses: google-github-actions/release-please-action@v3
         id: release
         with:
-          token: ${{ secrets.PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           release-type: node
           package-name: '@pokujs/shared-resources'
           changelog-path: 'CHANGELOG.md'
