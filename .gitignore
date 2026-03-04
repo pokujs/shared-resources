@@ -1,0 +1,11 @@
+.DS_Store
+.env
+.npmrc
+
+/lib/
+/ci/
+/playground/
+/coverage/
+/test/__fixtures__/.temp/
+
+node_modules/
