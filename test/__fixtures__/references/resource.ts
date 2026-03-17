@@ -1,0 +1,46 @@
+import { resource } from '../../../src/index.js';
+
+export const MutatorContext = resource.create(() => {
+  const value = Math.random();
+  return {
+    mutateArray(arr: number[]) {
+      arr.push(value);
+    },
+    getValue() {
+      return value;
+    },
+  };
+});
+
+export const ObjectMutatorContext = resource.create(() => {
+  const value = Math.random();
+  return {
+    mutateObject(obj: Record<string, unknown>) {
+      obj.key = value;
+    },
+    deleteKey(obj: Record<string, unknown>) {
+      delete obj.toDelete;
+    },
+    getValue() {
+      return value;
+    },
+  };
+});
+
+export const NestedMutatorContext = resource.create(() => {
+  const value = Math.random();
+  return {
+    pushToNestedArray(obj: { nested: { arr: number[] } }) {
+      obj.nested.arr.push(value);
+    },
+    mutateArrayOfObjects(arr: Array<{ x: number }>) {
+      for (const item of arr) item.x += 1;
+    },
+    truncateArray(arr: number[]) {
+      arr.splice(arr.length - 1);
+    },
+    getValue() {
+      return value;
+    },
+  };
+});

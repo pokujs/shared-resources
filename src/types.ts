@@ -58,7 +58,11 @@ export type IPCResourceResultMessage = {
 export type IPCRemoteProcedureCallResultMessage = {
   type: typeof SHARED_RESOURCE_MESSAGE_TYPES.REMOTE_PROCEDURE_CALL_RESULT;
   id: string;
-  value?: { result: unknown; latest: Record<string, unknown> };
+  value?: {
+    result: unknown;
+    latest: Record<string, unknown>;
+    mutatedArgs: unknown[];
+  };
   error?: string;
 };
 

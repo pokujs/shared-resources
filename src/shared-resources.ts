@@ -200,6 +200,54 @@ const remoteProcedureCall = async (
   return response.value;
 };
 
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
+
+const writeBackArray = (original: unknown[], mutated: unknown[]): void => {
+  const minLen = Math.min(original.length, mutated.length);
+
+  for (let i = 0; i < minLen; i++) {
+    const origItem = original[i];
+    const mutItem = mutated[i];
+
+    if (isPlainObject(origItem) && isPlainObject(mutItem))
+      writeBackObject(origItem, mutItem);
+    else if (Array.isArray(origItem) && Array.isArray(mutItem))
+      writeBackArray(origItem, mutItem);
+    else original[i] = mutated[i];
+  }
+
+  if (original.length > mutated.length) original.splice(mutated.length);
+
+  for (let i = original.length; i < mutated.length; i++)
+    original.push(mutated[i]);
+};
+
+const writeBackObject = (
+  orig: Record<string, unknown>,
+  mut: Record<string, unknown>
+): void => {
+  for (const key of Object.keys(orig)) if (!(key in mut)) delete orig[key];
+
+  for (const key of Object.keys(mut)) {
+    if (isPlainObject(orig[key]) && isPlainObject(mut[key]))
+      writeBackObject(
+        orig[key] as Record<string, unknown>,
+        mut[key] as Record<string, unknown>
+      );
+    else if (Array.isArray(orig[key]) && Array.isArray(mut[key]))
+      writeBackArray(orig[key] as unknown[], mut[key] as unknown[]);
+    else orig[key] = mut[key];
+  }
+};
+
+export const writeBack = (original: unknown, mutated: unknown): void => {
+  if (Array.isArray(original) && Array.isArray(mutated))
+    writeBackArray(original, mutated);
+  else if (isPlainObject(original) && isPlainObject(mutated))
+    writeBackObject(original, mutated);
+};
+
 export const extractFunctionNames = (obj: Record<string, unknown>) => {
   const seen = new Set<string>();
   let current = obj;
@@ -335,7 +383,8 @@ export const handleRemoteProcedureCall = async (
 
   try {
     const method = methodCandidate.bind(entry.state);
-    const result = await method(...(message.args || []));
+    const callArgs = message.args || [];
+    const result = await method(...callArgs);
 
     child.send({
       type: SHARED_RESOURCE_MESSAGE_TYPES.REMOTE_PROCEDURE_CALL_RESULT,
@@ -343,6 +392,7 @@ export const handleRemoteProcedureCall = async (
       value: {
         result,
         latest: state,
+        mutatedArgs: callArgs,
       },
     } satisfies IPCResponse);
   } catch (error) {
@@ -366,6 +416,9 @@ const constructSharedResourceWithRPCs = (
       if (typeof prop === 'string' && rpcs.includes(prop)) {
         return async (...args: unknown[]) => {
           const rpcResult = await remoteProcedureCall(name, prop, args);
+
+          for (let i = 0; i < args.length; i++)
+            writeBack(args[i], rpcResult.mutatedArgs[i]);
 
           for (const rpcKey of rpcs) {
             if (rpcKey in rpcResult.latest) {
