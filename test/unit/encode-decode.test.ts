@@ -163,12 +163,20 @@ test('encodeArg/decodeArg — object with __sr_enc key (collision escape)', () =
 test('encodeArg/decodeArg — BigInt', () => {
   assert.strictEqual(roundtrip(42n), 42n, 'BigInt survives roundtrip');
   assert.strictEqual(roundtrip(0n), 0n, 'BigInt 0 survives roundtrip');
-  assert.strictEqual(roundtrip(-99n), -99n, 'Negative BigInt survives roundtrip');
+  assert.strictEqual(
+    roundtrip(-99n),
+    -99n,
+    'Negative BigInt survives roundtrip'
+  );
 });
 
 test('encodeArg/decodeArg — BigInt in array', () => {
   const result = roundtrip([1n, 2n, 3n]) as bigint[];
-  assert.deepStrictEqual(result, [1n, 2n, 3n], 'Array of BigInts survives roundtrip');
+  assert.deepStrictEqual(
+    result,
+    [1n, 2n, 3n],
+    'Array of BigInts survives roundtrip'
+  );
 });
 
 test('encodeArg/decodeArg — BigInt in object', () => {
@@ -178,7 +186,10 @@ test('encodeArg/decodeArg — BigInt in object', () => {
 });
 
 test('encodeArg/decodeArg — BigInt as Map key and value', () => {
-  const m = new Map<bigint, bigint>([[1n, 100n], [2n, 200n]]);
+  const m = new Map<bigint, bigint>([
+    [1n, 100n],
+    [2n, 200n],
+  ]);
   const result = roundtrip(m) as Map<bigint, bigint>;
   assert.ok(result instanceof Map, 'Should be a Map instance');
   assert.strictEqual(result.get(1n), 100n, 'BigInt key and value preserved');

@@ -76,11 +76,18 @@ test('BigInt array mutation via IPC', async () => {
 
 test('BigInt Map mutation via IPC', async () => {
   const mutator = await resource.use(SpecialTypesMutatorContext);
-  const m = new Map<string, bigint>([['keep', 1n], ['toRemove', 2n]]);
+  const m = new Map<string, bigint>([
+    ['keep', 1n],
+    ['toRemove', 2n],
+  ]);
 
   await mutator.mutateBigIntMap(m);
 
-  assert.strictEqual(m.has('toRemove'), false, 'Removed entry should be absent');
+  assert.strictEqual(
+    m.has('toRemove'),
+    false,
+    'Removed entry should be absent'
+  );
   assert.strictEqual(m.get('added'), 42n, 'New BigInt entry should be 42n');
   assert.strictEqual(m.get('keep'), 1n, 'Unchanged entry should remain');
 });
