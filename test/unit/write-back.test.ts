@@ -172,3 +172,115 @@ test('writeBack — mismatched types (array vs object) is a no-op', () => {
     'Mismatched type should leave original unchanged'
   );
 });
+
+test('writeBack — Map repopulation', () => {
+  const original = new Map<string, number>([
+    ['a', 1],
+    ['b', 2],
+  ]);
+  const ref = original;
+  writeBack(
+    original,
+    new Map([
+      ['b', 99],
+      ['c', 3],
+    ])
+  );
+  assert.strictEqual(original, ref, 'Map reference should be preserved');
+  assert.strictEqual(original.has('a'), false, 'Removed key should be gone');
+  assert.strictEqual(original.get('b'), 99, 'Updated key should be updated');
+  assert.strictEqual(original.get('c'), 3, 'New key should be added');
+});
+
+test('writeBack — Set repopulation', () => {
+  const original = new Set<number>([1, 2, 3]);
+  const ref = original;
+  writeBack(original, new Set([2, 3, 4]));
+  assert.strictEqual(original, ref, 'Set reference should be preserved');
+  assert.strictEqual(original.has(1), false, 'Removed element should be gone');
+  assert.strictEqual(original.has(4), true, 'New element should be present');
+  assert.strictEqual(original.has(2), true, 'Unchanged element should remain');
+});
+
+test('writeBack — Date mutation', () => {
+  const original = new Date('2026-01-01T00:00:00.000Z');
+  const ref = original;
+  writeBack(original, new Date('2000-06-15T00:00:00.000Z'));
+  assert.strictEqual(original, ref, 'Date reference should be preserved');
+  assert.strictEqual(original.getFullYear(), 2000, 'Year should be updated');
+  assert.strictEqual(
+    original.getMonth(),
+    5,
+    'Month should be updated (0-indexed)'
+  );
+});
+
+test('writeBack — Map nested in object (reference preserved)', () => {
+  const innerMap = new Map<string, number>([['x', 1]]);
+  const original: Record<string, unknown> = { m: innerMap };
+  writeBack(original, {
+    m: new Map([
+      ['x', 1],
+      ['y', 2],
+    ]),
+  });
+  assert.strictEqual(
+    original.m,
+    innerMap,
+    'Inner Map reference should be preserved'
+  );
+  assert.strictEqual(
+    innerMap.get('y'),
+    2,
+    'Inner Map should be updated with new entry'
+  );
+});
+
+test('writeBack — Set nested in array (reference preserved)', () => {
+  const innerSet = new Set<number>([1, 2]);
+  const original: unknown[] = [innerSet, 42];
+  writeBack(original, [new Set([1, 2, 3]), 42]);
+  assert.strictEqual(
+    original[0],
+    innerSet,
+    'Set reference inside array should be preserved'
+  );
+  assert.strictEqual(innerSet.has(3), true, 'Set should have new element');
+});
+
+test('writeBack — Date nested in array (reference preserved)', () => {
+  const innerDate = new Date('2026-01-01T00:00:00.000Z');
+  const mutationTarget = new Date('2000-01-01T00:00:00.000Z');
+  const original: unknown[] = [innerDate, 42];
+  writeBack(original, [mutationTarget, 42]);
+  assert.strictEqual(
+    original[0],
+    innerDate,
+    'Date reference inside array should be preserved'
+  );
+  assert.strictEqual(
+    (original[0] as Date).getTime(),
+    mutationTarget.getTime(),
+    'Date time should be updated'
+  );
+});
+
+test('writeBack — Map is not treated as plain object (mismatched with plain object is no-op)', () => {
+  const original = new Map<string, number>([['a', 1]]);
+  writeBack(original, { a: 2 });
+  assert.strictEqual(
+    original.get('a'),
+    1,
+    'Map should be untouched when mutated is a plain object'
+  );
+});
+
+test('writeBack — Set is not treated as plain object (mismatched with array is no-op)', () => {
+  const original = new Set<number>([1, 2]);
+  writeBack(original, [3, 4]);
+  assert.strictEqual(
+    original.has(1),
+    true,
+    'Set should be untouched when mutated is an array'
+  );
+});

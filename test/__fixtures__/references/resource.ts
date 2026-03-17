@@ -44,3 +44,30 @@ export const NestedMutatorContext = resource.create(() => {
     },
   };
 });
+
+export const SpecialTypesMutatorContext = resource.create(() => ({
+  mutateDate(d: Date) {
+    d.setFullYear(2000);
+  },
+  mutateMap(m: Map<string, number>) {
+    m.set('added', 99);
+    m.delete('toRemove');
+  },
+  mutateSet(s: Set<number>) {
+    s.add(99);
+    s.delete(0);
+  },
+  setPropertyToUndefined(obj: Record<string, unknown>) {
+    obj.a = undefined;
+  },
+  pushUndefined(arr: (number | undefined)[]) {
+    arr.push(undefined);
+  },
+  mutateBigIntArray(arr: bigint[]) {
+    arr.push(99n);
+  },
+  mutateBigIntMap(m: Map<string, bigint>) {
+    m.set('added', 42n);
+    m.delete('toRemove');
+  },
+}));
