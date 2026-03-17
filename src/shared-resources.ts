@@ -182,7 +182,7 @@ const remoteProcedureCall = async (
       type: SHARED_RESOURCE_MESSAGE_TYPES.REMOTE_PROCEDURE_CALL,
       name,
       method,
-      args,
+      args: args.map(encodeArg),
       id: requestId,
     } satisfies IPCRemoteProcedureCallMessage,
     validator: (message): message is IPCRemoteProcedureCallResultMessage =>
@@ -198,6 +198,144 @@ const remoteProcedureCall = async (
     );
 
   return response.value;
+};
+
+const ENC_TAG = '__sr_enc';
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> => {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v) as unknown;
+  return proto === Object.prototype || proto === null;
+};
+
+const encodeObjectValues = (
+  obj: Record<string, unknown>
+): Record<string, unknown> => {
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(obj)) result[key] = encodeArg(obj[key]);
+  return result;
+};
+
+const encodeObject = (v: Record<string, unknown>): unknown =>
+  ENC_TAG in v
+    ? { [ENC_TAG]: 'esc', v: encodeObjectValues(v) }
+    : encodeObjectValues(v);
+
+export const encodeArg = (v: unknown): unknown => {
+  if (v === undefined) return { [ENC_TAG]: 'u' };
+  if (typeof v === 'bigint') return { [ENC_TAG]: 'bi', v: v.toString() };
+  if (v instanceof Date) return { [ENC_TAG]: 'd', v: v.toISOString() };
+  if (v instanceof Map)
+    return {
+      [ENC_TAG]: 'm',
+      v: Array.from(v.entries(), (e) => [encodeArg(e[0]), encodeArg(e[1])]),
+    };
+  if (v instanceof Set) return { [ENC_TAG]: 's', v: Array.from(v, encodeArg) };
+  if (Array.isArray(v)) return v.map(encodeArg);
+  if (isPlainObject(v)) return encodeObject(v);
+  return v;
+};
+
+const decodeObjectValues = (
+  obj: Record<string, unknown>
+): Record<string, unknown> => {
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(obj)) result[key] = decodeArg(obj[key]);
+  return result;
+};
+
+const decodeEncoded = (enc: Record<string, unknown>): unknown => {
+  const t = enc[ENC_TAG];
+  if (t === 'u') return undefined;
+  if (t === 'bi') return BigInt(enc.v as string);
+  if (t === 'd') return new Date(enc.v as string);
+  if (t === 'm') {
+    const entries = enc.v as [unknown, unknown][];
+    return new Map(
+      entries.map(
+        (e) => [decodeArg(e[0]), decodeArg(e[1])] as [unknown, unknown]
+      )
+    );
+  }
+  if (t === 's') return new Set((enc.v as unknown[]).map(decodeArg));
+  if (t === 'esc') return decodeObjectValues(enc.v as Record<string, unknown>);
+  return decodeObjectValues(enc);
+};
+
+export const decodeArg = (v: unknown): unknown => {
+  if (Array.isArray(v)) return v.map(decodeArg);
+  if (isPlainObject(v))
+    return ENC_TAG in v ? decodeEncoded(v) : decodeObjectValues(v);
+  return v;
+};
+
+const writeBackDate = (original: Date, mutated: Date): void => {
+  original.setTime(mutated.getTime());
+};
+
+const writeBackMap = (
+  original: Map<unknown, unknown>,
+  mutated: Map<unknown, unknown>
+): void => {
+  original.clear();
+  for (const [k, v] of mutated) original.set(k, v);
+};
+
+const writeBackSet = (original: Set<unknown>, mutated: Set<unknown>): void => {
+  original.clear();
+  for (const v of mutated) original.add(v);
+};
+
+const tryReconcileInPlace = (original: unknown, mutated: unknown): boolean => {
+  if (isPlainObject(original) && isPlainObject(mutated)) {
+    writeBackObject(original, mutated);
+    return true;
+  }
+  if (Array.isArray(original) && Array.isArray(mutated)) {
+    writeBackArray(original, mutated);
+    return true;
+  }
+  if (original instanceof Map && mutated instanceof Map) {
+    writeBackMap(original, mutated);
+    return true;
+  }
+  if (original instanceof Set && mutated instanceof Set) {
+    writeBackSet(original, mutated);
+    return true;
+  }
+  if (original instanceof Date && mutated instanceof Date) {
+    writeBackDate(original, mutated);
+    return true;
+  }
+  return false;
+};
+
+const writeBackArray = (original: unknown[], mutated: unknown[]): void => {
+  const minLen = Math.min(original.length, mutated.length);
+
+  for (let i = 0; i < minLen; i++) {
+    if (!tryReconcileInPlace(original[i], mutated[i])) original[i] = mutated[i];
+  }
+
+  if (original.length > mutated.length) original.splice(mutated.length);
+
+  for (let i = original.length; i < mutated.length; i++)
+    original.push(mutated[i]);
+};
+
+const writeBackObject = (
+  orig: Record<string, unknown>,
+  mut: Record<string, unknown>
+): void => {
+  for (const key of Object.keys(orig)) if (!(key in mut)) delete orig[key];
+
+  for (const key of Object.keys(mut)) {
+    if (!tryReconcileInPlace(orig[key], mut[key])) orig[key] = mut[key];
+  }
+};
+
+export const writeBack = (original: unknown, mutated: unknown): void => {
+  tryReconcileInPlace(original, mutated);
 };
 
 export const extractFunctionNames = (obj: Record<string, unknown>) => {
@@ -335,7 +473,8 @@ export const handleRemoteProcedureCall = async (
 
   try {
     const method = methodCandidate.bind(entry.state);
-    const result = await method(...(message.args || []));
+    const callArgs = (message.args || []).map(decodeArg);
+    const result = await method(...callArgs);
 
     child.send({
       type: SHARED_RESOURCE_MESSAGE_TYPES.REMOTE_PROCEDURE_CALL_RESULT,
@@ -343,6 +482,7 @@ export const handleRemoteProcedureCall = async (
       value: {
         result,
         latest: state,
+        mutatedArgs: callArgs.map(encodeArg),
       },
     } satisfies IPCResponse);
   } catch (error) {
@@ -366,6 +506,10 @@ const constructSharedResourceWithRPCs = (
       if (typeof prop === 'string' && rpcs.includes(prop)) {
         return async (...args: unknown[]) => {
           const rpcResult = await remoteProcedureCall(name, prop, args);
+          const decodedMutatedArgs = rpcResult.mutatedArgs.map(decodeArg);
+
+          for (let i = 0; i < args.length; i++)
+            writeBack(args[i], decodedMutatedArgs[i]);
 
           for (const rpcKey of rpcs) {
             if (rpcKey in rpcResult.latest) {

@@ -21,4 +21,14 @@ describe('Shared Resources', async () => {
 
     assert.strictEqual(exitCode, 1, 'Exit Code needs to be 1');
   });
+
+  await it('Reference tests', async () => {
+    const code = await poku('test/__fixtures__/references', {
+      noExit: true,
+      plugins: [sharedResources()],
+      concurrency: 0,
+    });
+
+    assert.strictEqual(code, 0, 'Exit Code needs to be 0');
+  });
 });
