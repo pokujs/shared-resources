@@ -1,62 +1,64 @@
 {
-	"name": "@pokujs/shared-resources",
-	"version": "1.0.0",
-	"private": false,
-	"description": "🪢 A Poku plugin for shared resources across isolated tests.",
-	"main": "./lib/index.js",
-	"license": "MIT",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/pokujs/shared-resources.git"
-	},
-	"homepage": "https://poku.io/docs/documentation/helpers/shared-resources",
-	"bugs": {
-		"url": "https://github.com/pokujs/shared-resources/issues"
-	},
-	"author": "https://github.com/wellwelwel",
-	"funding": {
-		"type": "github",
-		"url": "https://github.com/pokujs/shared-resources?sponsor=1"
-	},
-	"files": ["lib"],
-	"engines": {
-		"node": ">=16.x.x",
-		"bun": ">=1.x.x",
-		"deno": ">=2.x.x",
-		"typescript": ">=5.x.x"
-	},
-	"scripts": {
-		"test": "poku test/integration test/unit",
-		"test:bun": "bun poku test/integration test/unit",
-		"test:deno": "deno run -A npm:poku --denoAllow=all test/integration test/unit",
-		"prebuild": "rm -rf lib",
-		"build": "tsc",
-		"lint": "biome lint --error-on-warnings && prettier --check .",
-		"lint:fix": "biome lint --write && prettier --write ."
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^1.9.4",
-		"@ianvs/prettier-plugin-sort-imports": "^4.7.0",
-		"@types/node": "^25.3.3",
-		"poku": "^3.0.3-canary.68e71482",
-		"prettier": "^3.8.1",
-		"tsx": "^4.21.0",
-		"typescript": "^5.9.3"
-	},
-	"peerDependencies": {
-		"poku": "canary"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"keywords": [
-		"🐷",
-		"poku",
-		"pokujs",
-		"testing",
-		"plugin",
-		"shared-resources",
-		"ipc",
-		"parallel"
-	]
+  "name": "@pokujs/shared-resources",
+  "version": "1.0.0",
+  "private": false,
+  "description": "🪢 A Poku plugin for shared resources across isolated tests.",
+  "main": "./lib/index.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pokujs/shared-resources.git"
+  },
+  "homepage": "https://poku.io/docs/documentation/helpers/shared-resources",
+  "bugs": {
+    "url": "https://github.com/pokujs/shared-resources/issues"
+  },
+  "author": "https://github.com/wellwelwel",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/pokujs/shared-resources?sponsor=1"
+  },
+  "files": [
+    "lib"
+  ],
+  "engines": {
+    "node": ">=16.x.x",
+    "bun": ">=1.x.x",
+    "deno": ">=2.x.x",
+    "typescript": ">=5.x.x"
+  },
+  "scripts": {
+    "test": "poku test/integration test/unit",
+    "test:bun": "bun poku test/integration test/unit",
+    "test:deno": "deno run -A npm:poku --denoAllow=all test/integration test/unit",
+    "prebuild": "rm -rf lib",
+    "build": "tsc",
+    "lint": "biome lint --error-on-warnings && prettier --check .",
+    "lint:fix": "biome lint --write && prettier --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@ianvs/prettier-plugin-sort-imports": "^4.7.0",
+    "@types/node": "^25.3.3",
+    "poku": "^3.0.3-canary.68e71482",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "poku": "canary"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "🐷",
+    "poku",
+    "pokujs",
+    "testing",
+    "plugin",
+    "shared-resources",
+    "ipc",
+    "parallel"
+  ]
 }

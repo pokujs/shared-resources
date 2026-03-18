@@ -1,61 +1,61 @@
 {
-	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-	"files": {
-		"include": ["**/**"],
-		"ignore": ["coverage", "lib", "node_modules", "test/__fixtures__"]
-	},
-	"organizeImports": {
-		"enabled": false
-	},
-	"overrides": [
-		{
-			"include": ["src/index.ts"],
-			"linter": {
-				"rules": {
-					"performance": {
-						"noBarrelFile": "off"
-					}
-				}
-			}
-		}
-	],
-	"linter": {
-		"enabled": true,
-		"rules": {
-			"all": true,
-			"complexity": {
-				"all": true
-			},
-			"a11y": {
-				"all": true
-			},
-			"correctness": {
-				"all": true,
-				"noNodejsModules": "off"
-			},
-			"nursery": {
-				"all": true,
-				"useImportRestrictions": "off",
-				"noProcessEnv": "off",
-				"noSecrets": "off",
-				"useExplicitType": "off"
-			},
-			"performance": {
-				"all": true
-			},
-			"security": {
-				"all": true
-			},
-			"suspicious": {
-				"all": true
-			},
-			"style": {
-				"all": true,
-				"noNonNullAssertion": "off",
-				"useNamingConvention": "off",
-				"noNamespaceImport": "off",
-				"useBlockStatements": "off"
-			}
-		}
-	}
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "files": {
+    "include": ["**/**"],
+    "ignore": ["coverage", "lib", "node_modules", "test/__fixtures__"]
+  },
+  "organizeImports": {
+    "enabled": false
+  },
+  "overrides": [
+    {
+      "include": ["src/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    }
+  ],
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "all": true,
+      "complexity": {
+        "all": true
+      },
+      "a11y": {
+        "all": true
+      },
+      "correctness": {
+        "all": true,
+        "noNodejsModules": "off"
+      },
+      "nursery": {
+        "all": true,
+        "useImportRestrictions": "off",
+        "noProcessEnv": "off",
+        "noSecrets": "off",
+        "useExplicitType": "off"
+      },
+      "performance": {
+        "all": true
+      },
+      "security": {
+        "all": true
+      },
+      "suspicious": {
+        "all": true
+      },
+      "style": {
+        "all": true,
+        "noNonNullAssertion": "off",
+        "useNamingConvention": "off",
+        "noNamespaceImport": "off",
+        "useBlockStatements": "off"
+      }
+    }
+  }
 }
