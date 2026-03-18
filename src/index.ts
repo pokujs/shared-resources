@@ -7,7 +7,8 @@ import {
 } from './shared-resources.js';
 
 export const sharedResources = (config?: SharedResourcesConfig): PokuPlugin => {
-  if (config?.codecs?.length > 0) configureCodecs(config.codecs);
+  if (config?.codecs && config.codecs.length > 0)
+    configureCodecs(config.codecs);
   return {
     name: 'shared-resources',
     ipc: true,

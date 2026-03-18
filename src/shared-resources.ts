@@ -511,6 +511,7 @@ export const resource = {
    */
   // biome-ignore lint/suspicious/noExplicitAny: see configureCodecs
   configure: (config: { codecs?: ArgCodec<any>[] }) => {
-    if (config.codecs?.length > 0) configureCodecs(config.codecs);
+    if (config.codecs && config.codecs.length > 0)
+      configureCodecs(config.codecs);
   },
 } as const;
