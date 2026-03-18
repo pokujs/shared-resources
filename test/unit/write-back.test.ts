@@ -1,5 +1,6 @@
+import type { ArgCodec } from '../../src/types.js';
 import { assert, test } from 'poku';
-import { writeBack } from '../../src/shared-resources.js';
+import { configureCodecs, writeBack } from '../../src/shared-resources.js';
 
 test('writeBack — array push', () => {
   const original: number[] = [];
@@ -283,4 +284,117 @@ test('writeBack — Set is not treated as plain object (mismatched with array is
     true,
     'Set should be untouched when mutated is an array'
   );
+});
+
+test('writeBack — class instance: updates own enumerable data properties', () => {
+  class Point {
+    constructor(
+      public x: number,
+      public y: number
+    ) {}
+  }
+  const p = new Point(1, 2);
+  writeBack(p, { x: 10, y: 20 });
+  assert.strictEqual(p.x, 10, 'x should be updated in-place');
+  assert.strictEqual(p.y, 20, 'y should be updated in-place');
+  assert.ok(p instanceof Point, 'prototype chain should be preserved');
+});
+
+test('writeBack — class instance: adds new own properties from mutated', () => {
+  class Box {
+    constructor(public value: number) {}
+  }
+  const b = new Box(5);
+  writeBack(b, { value: 99, extra: 'added' });
+  assert.strictEqual(b.value, 99, 'existing property should be updated');
+  assert.strictEqual(
+    (b as unknown as Record<string, unknown>).extra,
+    'added',
+    'new property from mutated should be written back'
+  );
+  assert.ok(b instanceof Box, 'prototype chain should be preserved');
+});
+
+test('writeBack — function property not deleted when absent from mutated', () => {
+  const transform = (x: number) => x * 2;
+  const original: Record<string, unknown> = { value: 42, transform };
+  writeBack(original, { value: 100 });
+  assert.strictEqual(original.value, 100, 'value should be updated');
+  assert.strictEqual(
+    original.transform,
+    transform,
+    'function property should not be deleted'
+  );
+});
+
+test('writeBack — multiple function properties all preserved', () => {
+  const fn1 = () => 1;
+  const fn2 = () => 2;
+  const original: Record<string, unknown> = { count: 0, fn1, fn2 };
+  writeBack(original, { count: 5 });
+  assert.strictEqual(original.count, 5, 'data property should be updated');
+  assert.strictEqual(original.fn1, fn1, 'first function preserved');
+  assert.strictEqual(original.fn2, fn2, 'second function preserved');
+});
+
+test('writeBack — codec writeBack hook is called for registered types', () => {
+  class Vector {
+    constructor(
+      public x: number,
+      public y: number
+    ) {}
+  }
+  let writeBackCalled = false;
+  const vectorCodec: ArgCodec<Vector> = {
+    tag: '__test_vector_wb',
+    is: (v): v is Vector => v instanceof Vector,
+    encode: (v) => ({ x: v.x, y: v.y }),
+    decode: (data) => {
+      const { x, y } = data as { x: number; y: number };
+      return new Vector(x, y);
+    },
+    writeBack: (original, mutated) => {
+      writeBackCalled = true;
+      original.x = mutated.x;
+      original.y = mutated.y;
+    },
+  };
+  configureCodecs([vectorCodec]);
+  const v = new Vector(1, 2);
+  writeBack(v, new Vector(10, 20));
+  assert.strictEqual(
+    writeBackCalled,
+    true,
+    'codec writeBack should be invoked'
+  );
+  assert.strictEqual(v.x, 10, 'x updated via codec writeBack');
+  assert.strictEqual(v.y, 20, 'y updated via codec writeBack');
+  assert.ok(v instanceof Vector, 'prototype preserved after codec writeBack');
+});
+
+test('writeBack — codec writeBack reconcile callback handles nested values', () => {
+  class Wrapper {
+    constructor(public inner: { value: number }) {}
+  }
+  const wrapperCodec: ArgCodec<Wrapper> = {
+    tag: '__test_wrapper_wb',
+    is: (v): v is Wrapper => v instanceof Wrapper,
+    encode: (v) => ({ inner: v.inner }),
+    decode: (data) => new Wrapper((data as Wrapper).inner),
+    writeBack: (original, mutated, reconcile) => {
+      // Use reconcile to update the nested plain object in-place
+      reconcile(original.inner, mutated.inner);
+    },
+  };
+  configureCodecs([wrapperCodec]);
+  const innerRef = { value: 1 };
+  const w = new Wrapper(innerRef);
+  writeBack(w, new Wrapper({ value: 99 }));
+  assert.strictEqual(
+    w.inner,
+    innerRef,
+    'inner object reference preserved via reconcile'
+  );
+  assert.strictEqual(innerRef.value, 99, 'inner value updated via reconcile');
+  assert.ok(w instanceof Wrapper, 'prototype preserved');
 });
