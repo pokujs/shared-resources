@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import type {
+  ArgCodec,
   IPCEventEmitter,
   IPCMessage,
   IPCRemoteProcedureCallMessage,
@@ -15,6 +16,13 @@ import type {
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { findFileFromStack } from 'poku/plugins';
+import { arrayCodec } from './codecs/array.js';
+import { bigIntCodec } from './codecs/bigint.js';
+import { dateCodec } from './codecs/date.js';
+import { mapCodec } from './codecs/map.js';
+import { isPlainObject, objectCodec } from './codecs/object.js';
+import { setCodec } from './codecs/set.js';
+import { undefinedCodec } from './codecs/undefined.js';
 import { ResourceRegistry } from './resource-registry.js';
 
 const isWindows = process.platform === 'win32';
@@ -202,136 +210,98 @@ const remoteProcedureCall = async (
 
 const ENC_TAG = '__sr_enc';
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> => {
-  if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
-  const proto = Object.getPrototypeOf(v) as unknown;
-  return proto === Object.prototype || proto === null;
-};
+// Converts a codec tag (string or symbol) to the string stored in the wire
+// format. Symbol tags are globally-registered (Symbol.for), so Symbol.keyFor
+// always returns their key string.
+const tagToWire = (tag: string | symbol): string =>
+  typeof tag === 'symbol' ? Symbol.keyFor(tag)! : tag;
 
-const encodeObjectValues = (
-  obj: Record<string, unknown>
-): Record<string, unknown> => {
-  const result: Record<string, unknown> = {};
-  for (const key of Object.keys(obj)) result[key] = encodeArg(obj[key]);
-  return result;
-};
+// Checked in declaration order: first match wins, so user-registered codecs
+// (prepended by configureCodecs) always take precedence over built-ins.
+// biome-ignore lint/suspicious/noExplicitAny: stores heterogeneous codec types; is() always guards encode() calls
+let argCodecs: ArgCodec<any>[] = [
+  undefinedCodec,
+  bigIntCodec,
+  dateCodec,
+  mapCodec,
+  setCodec,
+  arrayCodec,
+  objectCodec,
+];
 
-const encodeObject = (v: Record<string, unknown>): unknown =>
-  ENC_TAG in v
-    ? { [ENC_TAG]: 'esc', v: encodeObjectValues(v) }
-    : encodeObjectValues(v);
+/**
+ * Registers (or merges) custom codecs into the global codec registry.
+ * New codecs are prepended so they are checked before built-ins, allowing
+ * subclass overrides. A later codec with the same tag replaces the earlier one.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: see argCodecs
+export const configureCodecs = (codecs: ArgCodec<any>[]): void => {
+  const incoming = new Map(codecs.map((c) => [c.tag, c]));
+  argCodecs = [...codecs, ...argCodecs.filter((c) => !incoming.has(c.tag))];
+};
 
 export const encodeArg = (v: unknown): unknown => {
-  if (v === undefined) return { [ENC_TAG]: 'u' };
-  if (typeof v === 'bigint') return { [ENC_TAG]: 'bi', v: v.toString() };
-  if (v instanceof Date) return { [ENC_TAG]: 'd', v: v.toISOString() };
-  if (v instanceof Map)
+  for (const codec of argCodecs)
+    if (codec.is(v))
+      return {
+        [ENC_TAG]: 'c',
+        t: tagToWire(codec.tag),
+        v: codec.encode(v, encodeArg),
+      };
+  // Class instances without a registered codec: encode own enumerable data
+  // properties (functions skipped). The prototype cannot survive a text-based
+  // IPC round-trip; writeBack reconciles the data back onto the original
+  // instance on the caller side, preserving its prototype chain.
+  if (typeof v === 'object' && v !== null)
     return {
-      [ENC_TAG]: 'm',
-      v: Array.from(v.entries(), (e) => [encodeArg(e[0]), encodeArg(e[1])]),
+      [ENC_TAG]: 'c',
+      t: tagToWire(objectCodec.tag),
+      v: objectCodec.encode(v as Record<string, unknown>, encodeArg),
     };
-  if (v instanceof Set) return { [ENC_TAG]: 's', v: Array.from(v, encodeArg) };
-  if (Array.isArray(v)) return v.map(encodeArg);
-  if (isPlainObject(v)) return encodeObject(v);
   return v;
-};
-
-const decodeObjectValues = (
-  obj: Record<string, unknown>
-): Record<string, unknown> => {
-  const result: Record<string, unknown> = {};
-  for (const key of Object.keys(obj)) result[key] = decodeArg(obj[key]);
-  return result;
 };
 
 const decodeEncoded = (enc: Record<string, unknown>): unknown => {
-  const t = enc[ENC_TAG];
-  if (t === 'u') return undefined;
-  if (t === 'bi') return BigInt(enc.v as string);
-  if (t === 'd') return new Date(enc.v as string);
-  if (t === 'm') {
-    const entries = enc.v as [unknown, unknown][];
-    return new Map(
-      entries.map(
-        (e) => [decodeArg(e[0]), decodeArg(e[1])] as [unknown, unknown]
-      )
+  if (enc[ENC_TAG] !== 'c') return enc;
+  const codec = argCodecs.find((c) =>
+    typeof c.tag === 'symbol' ? Symbol.keyFor(c.tag) === enc.t : c.tag === enc.t
+  );
+  if (!codec)
+    throw new Error(
+      `No codec registered for tag "${String(enc.t)}". Register it via resource.configure({ codecs }) in the resource file or pass it to sharedResources({ codecs }) for the parent process.`
     );
-  }
-  if (t === 's') return new Set((enc.v as unknown[]).map(decodeArg));
-  if (t === 'esc') return decodeObjectValues(enc.v as Record<string, unknown>);
-  return decodeObjectValues(enc);
+  return codec.decode(enc.v, decodeArg);
 };
 
 export const decodeArg = (v: unknown): unknown => {
-  if (Array.isArray(v)) return v.map(decodeArg);
-  if (isPlainObject(v))
-    return ENC_TAG in v ? decodeEncoded(v) : decodeObjectValues(v);
+  if (isPlainObject(v)) return ENC_TAG in v ? decodeEncoded(v) : v;
   return v;
 };
 
-const writeBackDate = (original: Date, mutated: Date): void => {
-  original.setTime(mutated.getTime());
-};
-
-const writeBackMap = (
-  original: Map<unknown, unknown>,
-  mutated: Map<unknown, unknown>
-): void => {
-  original.clear();
-  for (const [k, v] of mutated) original.set(k, v);
-};
-
-const writeBackSet = (original: Set<unknown>, mutated: Set<unknown>): void => {
-  original.clear();
-  for (const v of mutated) original.add(v);
-};
-
 const tryReconcileInPlace = (original: unknown, mutated: unknown): boolean => {
-  if (isPlainObject(original) && isPlainObject(mutated)) {
-    writeBackObject(original, mutated);
-    return true;
+  for (const codec of argCodecs) {
+    if (codec.writeBack && codec.is(original) && codec.is(mutated)) {
+      codec.writeBack(original, mutated, tryReconcileInPlace);
+      return true;
+    }
   }
-  if (Array.isArray(original) && Array.isArray(mutated)) {
-    writeBackArray(original, mutated);
-    return true;
-  }
-  if (original instanceof Map && mutated instanceof Map) {
-    writeBackMap(original, mutated);
-    return true;
-  }
-  if (original instanceof Set && mutated instanceof Set) {
-    writeBackSet(original, mutated);
-    return true;
-  }
-  if (original instanceof Date && mutated instanceof Date) {
-    writeBackDate(original, mutated);
+  // Class instances without a codec: reconcile own enumerable data properties.
+  if (
+    typeof original === 'object' &&
+    original !== null &&
+    !Array.isArray(original) &&
+    typeof mutated === 'object' &&
+    mutated !== null &&
+    !Array.isArray(mutated)
+  ) {
+    objectCodec.writeBack!(
+      original as Record<string, unknown>,
+      mutated as Record<string, unknown>,
+      tryReconcileInPlace
+    );
     return true;
   }
   return false;
-};
-
-const writeBackArray = (original: unknown[], mutated: unknown[]): void => {
-  const minLen = Math.min(original.length, mutated.length);
-
-  for (let i = 0; i < minLen; i++) {
-    if (!tryReconcileInPlace(original[i], mutated[i])) original[i] = mutated[i];
-  }
-
-  if (original.length > mutated.length) original.splice(mutated.length);
-
-  for (let i = original.length; i < mutated.length; i++)
-    original.push(mutated[i]);
-};
-
-const writeBackObject = (
-  orig: Record<string, unknown>,
-  mut: Record<string, unknown>
-): void => {
-  for (const key of Object.keys(orig)) if (!(key in mut)) delete orig[key];
-
-  for (const key of Object.keys(mut)) {
-    if (!tryReconcileInPlace(orig[key], mut[key])) orig[key] = mut[key];
-  }
 };
 
 export const writeBack = (original: unknown, mutated: unknown): void => {
@@ -530,4 +500,18 @@ const constructSharedResourceWithRPCs = (
 export const resource = {
   create,
   use,
+  /**
+   * Registers custom codecs for the current process (child side).
+   * Call this at the top level of your resource definition file so it runs
+   * during module evaluation in both the child and (via `loadModuleResources`)
+   * the parent process.
+   *
+   * Multiple calls merge by tag — a later codec with the same tag replaces the
+   * earlier one, so resource files can each configure their own codecs safely.
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: see configureCodecs
+  configure: (config: { codecs?: ArgCodec<any>[] }) => {
+    if (config.codecs && config.codecs.length > 0)
+      configureCodecs(config.codecs);
+  },
 } as const;
