@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/pokujs/shared-resources/compare/v1.1.0...v1.1.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **deps:** use latest version of Poku ([#7](https://github.com/pokujs/shared-resources/issues/7)) ([e024e8d](https://github.com/pokujs/shared-resources/commit/e024e8d9572e4cad93bf7c5f1ca73b31bbd377a2))
+
 ## [1.1.0](https://github.com/pokujs/shared-resources/compare/v1.0.0...v1.1.0) (2026-03-18)
 
 
