@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/pokujs/shared-resources/compare/v1.1.1...v1.1.2) (2026-04-02)
+
+
+### Bug Fixes
+
+* avoid IPC mode when isolation is none ([#9](https://github.com/pokujs/shared-resources/issues/9)) ([a185f7d](https://github.com/pokujs/shared-resources/commit/a185f7d3fbf03124f7af81dcfd2f2a3272f0e6ca))
+
 ## [1.1.1](https://github.com/pokujs/shared-resources/compare/v1.1.0...v1.1.1) (2026-03-31)
 
 
