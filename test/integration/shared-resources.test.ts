@@ -8,6 +8,19 @@ describe('Shared Resources', async () => {
       noExit: true,
       plugins: [sharedResources()],
       concurrency: 0,
+      timeout: 10000,
+    });
+
+    assert.strictEqual(code, 0, 'Exit Code needs to be 0');
+  });
+
+  await it('Runs on isolation: none', async () => {
+    const code = await poku('test/__fixtures__/parallel', {
+      noExit: true,
+      plugins: [sharedResources()],
+      isolation: 'none',
+      concurrency: 0,
+      timeout: 10000,
     });
 
     assert.strictEqual(code, 0, 'Exit Code needs to be 0');

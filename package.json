@@ -40,7 +40,7 @@
     "@biomejs/biome": "^1.9.4",
     "@ianvs/prettier-plugin-sort-imports": "^4.7.0",
     "@types/node": "^25.3.3",
-    "poku": "^4.1.0",
+    "poku": "4.2.0",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"

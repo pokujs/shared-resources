@@ -3,6 +3,8 @@ import type { SharedResourcesConfig } from './types.js';
 import {
   configureCodecs,
   globalRegistry,
+  resetSharedResourcesRuntime,
+  setExecutionMode,
   setupSharedResourceIPC,
 } from './shared-resources.js';
 
@@ -15,11 +17,18 @@ export const sharedResources = (config?: SharedResourcesConfig): PokuPlugin => {
     onTestProcess(child) {
       setupSharedResourceIPC(child);
     },
+    setup(context) {
+      const { isolation } = context.configs;
+
+      setExecutionMode(isolation === 'none' ? 'in-process' : 'process');
+    },
     async teardown() {
       const entries = Object.values(globalRegistry);
 
       for (const entry of entries)
         if (entry.onDestroy) await entry.onDestroy(entry.state);
+
+      resetSharedResourcesRuntime();
     },
   };
 };

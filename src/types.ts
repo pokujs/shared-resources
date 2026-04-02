@@ -142,3 +142,4 @@ export type SharedResourcesConfig = {
   // biome-ignore lint/suspicious/noExplicitAny: see ArgCodec
   codecs?: ArgCodec<any>[];
 };
+export type SharedResourceExecutionMode = 'process' | 'in-process';
