@@ -12,6 +12,7 @@ import type {
   ResourceContext,
   SendIPCMessageOptions,
   SharedResourceEntry,
+  SharedResourceExecutionMode,
 } from './types.js';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
@@ -29,6 +30,7 @@ const isWindows = process.platform === 'win32';
 
 const resourceRegistry = new ResourceRegistry<SharedResourceEntry>();
 const moduleCounters = new Map<string, number>();
+let executionMode: SharedResourceExecutionMode = 'process';
 
 export const SHARED_RESOURCE_MESSAGE_TYPES = {
   REQUEST_RESOURCE: 'shared_resources_requestResource',
@@ -38,6 +40,19 @@ export const SHARED_RESOURCE_MESSAGE_TYPES = {
 } as const;
 
 export const globalRegistry = resourceRegistry.getRegistry();
+
+export const setExecutionMode = (mode: SharedResourceExecutionMode) => {
+  executionMode = mode;
+};
+
+export const getExecutionMode = () => executionMode;
+
+export const resetSharedResourcesRuntime = () => {
+  resourceRegistry.clear();
+  resourceRegistry.setIsRegistering(false);
+  moduleCounters.clear();
+  executionMode = 'process';
+};
 
 const create = <T>(
   factory: () => T,
@@ -72,10 +87,19 @@ const use = async <T>(
 ): Promise<MethodsToRPC<T>> => {
   const { name } = context;
 
-  // Parent Process (Host)
-  if (!process.send || resourceRegistry.getIsRegistering()) {
+  // In-process execution always resolves resources directly from the local registry.
+  if (
+    executionMode === 'in-process' ||
+    !process.send ||
+    resourceRegistry.getIsRegistering()
+  ) {
     const existing = resourceRegistry.get(name);
     if (existing) {
+      if (executionMode === 'in-process')
+        return constructInProcessResource(
+          existing.state as Record<string, unknown>
+        ) as MethodsToRPC<T>;
+
       return existing.state as MethodsToRPC<T>;
     }
 
@@ -86,6 +110,11 @@ const use = async <T>(
         | ((instance: unknown) => void | Promise<void>)
         | undefined,
     });
+
+    if (executionMode === 'in-process')
+      return constructInProcessResource(
+        state as Record<string, unknown>
+      ) as MethodsToRPC<T>;
 
     return state as MethodsToRPC<T>;
   }
@@ -148,6 +177,12 @@ export const sendIPCMessage = <TResponse>(
 };
 
 const requestResource = async (name: string, module: string) => {
+  if (executionMode === 'in-process') {
+    throw new Error(
+      'Cannot request shared resources through IPC while running in in-process mode.'
+    );
+  }
+
   const requestId = `${name}-${Date.now()}-${Math.random()}`;
 
   const response = await sendIPCMessage<IPCResourceResultMessage>({
@@ -183,6 +218,12 @@ const remoteProcedureCall = async (
   method: string,
   args: unknown[]
 ) => {
+  if (executionMode === 'in-process') {
+    throw new Error(
+      'Cannot run shared resource RPCs through IPC while running in in-process mode.'
+    );
+  }
+
   const requestId = `${name}-${method}-${Date.now()}-${Math.random()}`;
 
   const response = await sendIPCMessage<IPCRemoteProcedureCallResultMessage>({
@@ -332,6 +373,8 @@ export const setupSharedResourceIPC = (
   child: IPCEventEmitter | ChildProcess,
   registry: Record<string, SharedResourceEntry> = globalRegistry
 ): void => {
+  if (executionMode === 'in-process') return;
+
   child.on('message', async (message: IPCMessage) => {
     if (message.type === SHARED_RESOURCE_MESSAGE_TYPES.REQUEST_RESOURCE)
       await handleRequestResource(message, registry, child);
@@ -496,6 +539,17 @@ const constructSharedResourceWithRPCs = (
     },
   });
 };
+
+const constructInProcessResource = (target: Record<string, unknown>) =>
+  new Proxy(target, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+
+      if (typeof value !== 'function') return value;
+
+      return async (...args: unknown[]) => value.apply(target, args);
+    },
+  });
 
 export const resource = {
   create,
