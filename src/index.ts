@@ -18,9 +18,9 @@ export const sharedResources = (config?: SharedResourcesConfig): PokuPlugin => {
       setupSharedResourceIPC(child);
     },
     setup(context) {
-      setExecutionMode(
-        context.configs.isolation === 'none' ? 'in-process' : 'process'
-      );
+      const { isolation } = context.configs;
+
+      setExecutionMode(isolation === 'none' ? 'in-process' : 'process');
     },
     async teardown() {
       const entries = Object.values(globalRegistry);
