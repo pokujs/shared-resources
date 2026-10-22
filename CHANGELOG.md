@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.3](https://github.com/pokujs/shared-resources/compare/v1.1.2...v1.1.3) (2026-10-22)
+
+
+### Bug Fixes
+
+* deduplicate resource creation and preserve RPC state ([#12](https://github.com/pokujs/shared-resources/issues/12)) ([ec85dd0](https://github.com/pokujs/shared-resources/commit/ec85dd0e977fdf0ff34e183452ebc9f9f2c66dc2))
+
 ## [1.1.2](https://github.com/pokujs/shared-resources/compare/v1.1.1...v1.1.2) (2026-04-02)
 
 
