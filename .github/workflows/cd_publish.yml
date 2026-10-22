@@ -1,10 +1,19 @@
-name: '🚀 CD — Publish'
+name: "🚀 CD — Publish"
 
 on:
   push:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish or retry"
+        required: false
+        type: string
+
+concurrency:
+  group: npm-publish-${{ github.repository }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -14,50 +23,55 @@ permissions:
 
 jobs:
   release-please:
+    if: github.event.repository.fork == false && !inputs.tag
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.event.repository.fork == false
-    name: Release Please
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
     steps:
       - name: 🤝 Release Please
-        uses: google-github-actions/release-please-action@v3
+        uses: googleapis/release-please-action@v4
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          release-type: node
-          package-name: '@pokujs/shared-resources'
-          changelog-path: 'CHANGELOG.md'
 
-      - name: ➕ Actions - Checkout
+  publish:
+    needs: release-please
+    if: always() && github.event.repository.fork == false && (inputs.tag || needs.release-please.outputs.created == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ inputs.tag || needs.release-please.outputs.tag }}
+    steps:
+      - name: ➕ Actions - Checkout release
         uses: actions/checkout@v4
-        if: ${{ steps.release.outputs.releases_created }}
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: ➕ Actions - Setup Node.js
         uses: actions/setup-node@v4
-        if: ${{ steps.release.outputs.releases_created }}
         with:
-          check-latest: true
-          node-version: lts/*
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
 
-      - name: ➕ Cache dependencies
-        uses: actions/cache@v4
-        if: ${{ steps.release.outputs.releases_created }}
-        with:
-          path: ~/.npm
-          key: npm-linux-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-linux-
+      - name: ✅ Verify release version
+        run: node -e 'const { version } = require("./package.json"); if (process.env.RELEASE_TAG !== `v${version}`) throw new Error("Release tag must match the package version.");'
 
       - name: 📦 Installing Dependencies
-        if: ${{ steps.release.outputs.releases_created }}
         run: npm ci
 
-      - name: 🚀 Building Poku
-        if: ${{ steps.release.outputs.releases_created }}
+      - name: ✅ Validate
+        run: npm run lint && npm test
+
+      - name: 🚀 Building
         run: npm run build
 
+      - name: 📦 Validate package
+        run: npm pack --dry-run
+
       - name: 📥 Publishing Package
-        if: ${{ steps.release.outputs.releases_created }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance
+        run: npm publish --provenance --access public
