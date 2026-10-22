@@ -1,47 +1,51 @@
-import { assert, describe, it, poku } from 'poku';
+import { assert, describe, it } from 'poku';
 import { inspectPoku } from 'poku/plugins';
-import { sharedResources } from '../../src/index.js';
+
+const FACTORY_ERROR_PATTERN = /Intentional factory error/;
 
 describe('Shared Resources', async () => {
   await it('Parallel tests', async () => {
-    const code = await poku('test/__fixtures__/parallel', {
-      noExit: true,
-      plugins: [sharedResources()],
-      concurrency: 0,
-      timeout: 10000,
+    const { exitCode, stdout, stderr } = await inspectPoku({
+      bin: 'test/__utils__/poku-cli.ts',
+      spawnOptions: { timeout: 15000 },
+      command:
+        '--config=test/__fixtures__/parallel/poku.config.mts --isolation=process --timeout=10000 test/__fixtures__/parallel',
     });
 
-    assert.strictEqual(code, 0, 'Exit Code needs to be 0');
+    assert.strictEqual(exitCode, 0, `${stdout}\n${stderr}`);
   });
 
   await it('Runs on isolation: none', async () => {
-    const code = await poku('test/__fixtures__/parallel', {
-      noExit: true,
-      plugins: [sharedResources()],
-      isolation: 'none',
-      concurrency: 0,
-      timeout: 10000,
+    const { exitCode, stdout, stderr } = await inspectPoku({
+      bin: 'test/__utils__/poku-cli.ts',
+      spawnOptions: { timeout: 15000 },
+      command:
+        '--config=test/__fixtures__/parallel/poku.config.mts --isolation=none --timeout=10000 test/__fixtures__/in-process',
     });
 
-    assert.strictEqual(code, 0, 'Exit Code needs to be 0');
+    assert.strictEqual(exitCode, 0, `${stdout}\n${stderr}`);
   });
 
   await it('Error tests', async () => {
-    const { exitCode } = await inspectPoku({
+    const { exitCode, stdout, stderr } = await inspectPoku({
+      bin: 'test/__utils__/poku-cli.ts',
+      spawnOptions: { timeout: 15000 },
       command:
-        '--config="test/__fixtures__/error/poku.config.ts" test/__fixtures__/error',
+        '--config=test/__fixtures__/parallel/poku.config.mts test/__fixtures__/error',
     });
 
     assert.strictEqual(exitCode, 1, 'Exit Code needs to be 1');
+    assert.match(`${stdout}\n${stderr}`, FACTORY_ERROR_PATTERN);
   });
 
   await it('Reference tests', async () => {
-    const code = await poku('test/__fixtures__/references', {
-      noExit: true,
-      plugins: [sharedResources()],
-      concurrency: 0,
+    const { exitCode, stdout, stderr } = await inspectPoku({
+      bin: 'test/__utils__/poku-cli.ts',
+      spawnOptions: { timeout: 15000 },
+      command:
+        '--config=test/__fixtures__/parallel/poku.config.mts --isolation=process test/__fixtures__/references',
     });
 
-    assert.strictEqual(code, 0, 'Exit Code needs to be 0');
+    assert.strictEqual(exitCode, 0, `${stdout}\n${stderr}`);
   });
 });

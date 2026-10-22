@@ -2,7 +2,7 @@ import { assert, test, waitForExpectedResult } from 'poku';
 import { resource } from '../../../src/index.js';
 import { CounterContext, FlagContext } from '../counter.js';
 
-test('Test two Resources from Same File', async () => {
+export const result = test('Test two Resources from Same File', async () => {
   const counter = await resource.use(CounterContext);
   const flag = await resource.use(FlagContext);
 

@@ -2,7 +2,7 @@ import { assert, test } from 'poku';
 import { resource } from '../../../src/index.js';
 import { ServerContext } from '../server.js';
 
-test('Server: Query and Verify Response', async () => {
+export const result = test('Server: Query and Verify Response', async () => {
   const server = await resource.use(ServerContext);
   const result = await server.query('/');
 
