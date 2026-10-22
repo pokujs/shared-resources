@@ -1,4 +1,4 @@
-name: "🚀 CD — Publish"
+name: '🚀 CD — Publish'
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to publish or retry"
+        description: 'Existing release tag to publish or retry'
         required: false
         type: string
 
@@ -52,8 +52,8 @@ jobs:
       - name: ➕ Actions - Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org"
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
           cache: npm
 
       - name: ✅ Verify release version
