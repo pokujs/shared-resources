@@ -2,7 +2,7 @@ import { assert, test, waitForExpectedResult } from 'poku';
 import { resource } from '../../../src/index.js';
 import { CounterContext } from '../counter.js';
 
-test('Verify Counter State', async () => {
+export const result = test('Verify Counter State', async () => {
   const counter = await resource.use(CounterContext);
 
   await waitForExpectedResult(counter.getCount, 1);

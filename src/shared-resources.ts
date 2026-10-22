@@ -28,9 +28,52 @@ import { ResourceRegistry } from './resource-registry.js';
 
 const isWindows = process.platform === 'win32';
 
-const resourceRegistry = new ResourceRegistry<SharedResourceEntry>();
-const moduleCounters = new Map<string, number>();
-let executionMode: SharedResourceExecutionMode = 'process';
+const RUNTIME_STATE_KEY = Symbol.for('@pokujs/shared-resources.runtime-state');
+
+type SharedResourcesRuntimeState = {
+  resourceRegistry: ResourceRegistry<SharedResourceEntry>;
+  moduleCounters: Map<string, number>;
+  executionMode: SharedResourceExecutionMode;
+  pendingCreations: Map<string, Promise<SharedResourceEntry>>;
+  pendingModuleLoads: Map<string, Promise<void>>;
+  // biome-ignore lint/suspicious/noExplicitAny: stores heterogeneous codec types
+  argCodecs: ArgCodec<any>[];
+};
+
+const getDefaultCodecs = () => [
+  undefinedCodec,
+  bigIntCodec,
+  dateCodec,
+  mapCodec,
+  setCodec,
+  arrayCodec,
+  objectCodec,
+];
+
+const getRuntimeState = (): SharedResourcesRuntimeState => {
+  const g = globalThis as typeof globalThis & {
+    [RUNTIME_STATE_KEY]?: SharedResourcesRuntimeState;
+  };
+  if (!g[RUNTIME_STATE_KEY]) {
+    g[RUNTIME_STATE_KEY] = {
+      resourceRegistry: new ResourceRegistry<SharedResourceEntry>(),
+      moduleCounters: new Map<string, number>(),
+      executionMode: 'process',
+      pendingCreations: new Map<string, Promise<SharedResourceEntry>>(),
+      pendingModuleLoads: new Map<string, Promise<void>>(),
+      argCodecs: getDefaultCodecs(),
+    };
+  }
+  return g[RUNTIME_STATE_KEY];
+};
+
+const runtimeState = getRuntimeState();
+const {
+  resourceRegistry,
+  moduleCounters,
+  pendingCreations,
+  pendingModuleLoads,
+} = runtimeState;
 
 export const SHARED_RESOURCE_MESSAGE_TYPES = {
   REQUEST_RESOURCE: 'shared_resources_requestResource',
@@ -42,16 +85,17 @@ export const SHARED_RESOURCE_MESSAGE_TYPES = {
 export const globalRegistry = resourceRegistry.getRegistry();
 
 export const setExecutionMode = (mode: SharedResourceExecutionMode) => {
-  executionMode = mode;
+  runtimeState.executionMode = mode;
 };
 
-export const getExecutionMode = () => executionMode;
+export const getExecutionMode = () => runtimeState.executionMode;
 
 export const resetSharedResourcesRuntime = () => {
   resourceRegistry.clear();
-  resourceRegistry.setIsRegistering(false);
   moduleCounters.clear();
-  executionMode = 'process';
+  pendingCreations.clear();
+  pendingModuleLoads.clear();
+  runtimeState.executionMode = 'process';
 };
 
 const create = <T>(
@@ -89,34 +133,41 @@ const use = async <T>(
 
   // In-process execution always resolves resources directly from the local registry.
   if (
-    executionMode === 'in-process' ||
+    runtimeState.executionMode === 'in-process' ||
     !process.send ||
     resourceRegistry.getIsRegistering()
   ) {
-    const existing = resourceRegistry.get(name);
-    if (existing) {
-      if (executionMode === 'in-process')
-        return constructInProcessResource(
-          existing.state as Record<string, unknown>
-        ) as MethodsToRPC<T>;
+    let entry = resourceRegistry.get(name);
+    if (!entry) {
+      let pending = pendingCreations.get(name);
+      if (!pending) {
+        pending = (async () => {
+          const state = await context.factory();
+          const created: SharedResourceEntry = {
+            state,
+            onDestroy: context.onDestroy as
+              | ((instance: unknown) => void | Promise<void>)
+              | undefined,
+          };
+          resourceRegistry.register(name, created);
+          return created;
+        })();
+        pendingCreations.set(name, pending);
+      }
 
-      return existing.state as MethodsToRPC<T>;
+      try {
+        entry = await pending;
+      } finally {
+        pendingCreations.delete(name);
+      }
     }
 
-    const state = await context.factory();
-    resourceRegistry.register(name, {
-      state,
-      onDestroy: context.onDestroy as
-        | ((instance: unknown) => void | Promise<void>)
-        | undefined,
-    });
-
-    if (executionMode === 'in-process')
+    if (runtimeState.executionMode === 'in-process')
       return constructInProcessResource(
-        state as Record<string, unknown>
+        entry.state as Record<string, unknown>
       ) as MethodsToRPC<T>;
 
-    return state as MethodsToRPC<T>;
+    return entry.state as MethodsToRPC<T>;
   }
 
   if (!context.module)
@@ -156,6 +207,12 @@ export const sendIPCMessage = <TResponse>(
     const cleanup = () => {
       if (timer) clearTimeout(timer);
       emitter.off('message', handleMessage);
+      if (emitter === process && emitter.listenerCount('message') === 0) {
+        const procWithChannel = process as typeof process & {
+          channel?: { unref?: () => void };
+        };
+        procWithChannel.channel?.unref?.();
+      }
     };
 
     if (typeof timeout === 'number' && timeout > 0) {
@@ -165,6 +222,12 @@ export const sendIPCMessage = <TResponse>(
       }, timeout);
     }
 
+    if (emitter === process) {
+      const procWithChannel = process as typeof process & {
+        channel?: { ref?: () => void };
+      };
+      procWithChannel.channel?.ref?.();
+    }
     emitter.on('message', handleMessage);
 
     try {
@@ -177,7 +240,7 @@ export const sendIPCMessage = <TResponse>(
 };
 
 const requestResource = async (name: string, module: string) => {
-  if (executionMode === 'in-process') {
+  if (runtimeState.executionMode === 'in-process') {
     throw new Error(
       'Cannot request shared resources through IPC while running in in-process mode.'
     );
@@ -201,16 +264,14 @@ const requestResource = async (name: string, module: string) => {
       message.id === requestId,
   });
 
-  if (response.error || !response.value || !response.rpcs)
+  if (response.error || response.value === undefined || !response.rpcs)
     throw new Error(
       response.error ?? `Invalid response for resource "${name}"`
     );
 
-  return constructSharedResourceWithRPCs(
-    response.value as Record<string, unknown>,
-    response.rpcs,
-    name
-  );
+  const decodedState = decodeArg(response.value) as Record<string, unknown>;
+
+  return constructSharedResourceWithRPCs(decodedState, response.rpcs, name);
 };
 
 const remoteProcedureCall = async (
@@ -218,7 +279,7 @@ const remoteProcedureCall = async (
   method: string,
   args: unknown[]
 ) => {
-  if (executionMode === 'in-process') {
+  if (runtimeState.executionMode === 'in-process') {
     throw new Error(
       'Cannot run shared resource RPCs through IPC while running in in-process mode.'
     );
@@ -257,19 +318,6 @@ const ENC_TAG = '__sr_enc';
 const tagToWire = (tag: string | symbol): string =>
   typeof tag === 'symbol' ? Symbol.keyFor(tag)! : tag;
 
-// Checked in declaration order: first match wins, so user-registered codecs
-// (prepended by configureCodecs) always take precedence over built-ins.
-// biome-ignore lint/suspicious/noExplicitAny: stores heterogeneous codec types; is() always guards encode() calls
-let argCodecs: ArgCodec<any>[] = [
-  undefinedCodec,
-  bigIntCodec,
-  dateCodec,
-  mapCodec,
-  setCodec,
-  arrayCodec,
-  objectCodec,
-];
-
 /**
  * Registers (or merges) custom codecs into the global codec registry.
  * New codecs are prepended so they are checked before built-ins, allowing
@@ -278,11 +326,14 @@ let argCodecs: ArgCodec<any>[] = [
 // biome-ignore lint/suspicious/noExplicitAny: see argCodecs
 export const configureCodecs = (codecs: ArgCodec<any>[]): void => {
   const incoming = new Map(codecs.map((c) => [c.tag, c]));
-  argCodecs = [...codecs, ...argCodecs.filter((c) => !incoming.has(c.tag))];
+  runtimeState.argCodecs = [
+    ...codecs,
+    ...runtimeState.argCodecs.filter((c) => !incoming.has(c.tag)),
+  ];
 };
 
 export const encodeArg = (v: unknown): unknown => {
-  for (const codec of argCodecs)
+  for (const codec of runtimeState.argCodecs)
     if (codec.is(v))
       return {
         [ENC_TAG]: 'c',
@@ -304,7 +355,7 @@ export const encodeArg = (v: unknown): unknown => {
 
 const decodeEncoded = (enc: Record<string, unknown>): unknown => {
   if (enc[ENC_TAG] !== 'c') return enc;
-  const codec = argCodecs.find((c) =>
+  const codec = runtimeState.argCodecs.find((c) =>
     typeof c.tag === 'symbol' ? Symbol.keyFor(c.tag) === enc.t : c.tag === enc.t
   );
   if (!codec)
@@ -320,7 +371,7 @@ export const decodeArg = (v: unknown): unknown => {
 };
 
 const tryReconcileInPlace = (original: unknown, mutated: unknown): boolean => {
-  for (const codec of argCodecs) {
+  for (const codec of runtimeState.argCodecs) {
     if (codec.writeBack && codec.is(original) && codec.is(mutated)) {
       codec.writeBack(original, mutated, tryReconcileInPlace);
       return true;
@@ -373,7 +424,7 @@ export const setupSharedResourceIPC = (
   child: IPCEventEmitter | ChildProcess,
   registry: Record<string, SharedResourceEntry> = globalRegistry
 ): void => {
-  if (executionMode === 'in-process') return;
+  if (runtimeState.executionMode === 'in-process') return;
 
   child.on('message', async (message: IPCMessage) => {
     if (message.type === SHARED_RESOURCE_MESSAGE_TYPES.REQUEST_RESOURCE)
@@ -385,28 +436,42 @@ export const setupSharedResourceIPC = (
   });
 };
 
-const loadModuleResources = async (module: string) => {
+const isResourceContext = (
+  exported: unknown
+): exported is ResourceContext<unknown> =>
+  Boolean(
+    exported &&
+    typeof exported === 'object' &&
+    'factory' in exported &&
+    typeof exported.factory === 'function'
+  );
+
+const importAndRegisterModuleResources = async (module: string) => {
   resourceRegistry.setIsRegistering(true);
 
   try {
     const modulePath = isWindows ? pathToFileURL(module).href : module;
     const mod: Record<string, unknown> = await import(modulePath);
 
-    for (const key in mod) {
-      if (!Object.prototype.hasOwnProperty.call(mod, key)) continue;
-
-      const exported = mod[key];
-
-      if (
-        exported &&
-        typeof exported === 'object' &&
-        'factory' in exported &&
-        typeof exported.factory === 'function'
-      )
-        await use(exported as ResourceContext<unknown>);
+    for (const exported of Object.values(mod)) {
+      if (isResourceContext(exported)) await use(exported);
     }
   } finally {
     resourceRegistry.setIsRegistering(false);
+  }
+};
+
+const loadModuleResources = async (module: string) => {
+  let pending = pendingModuleLoads.get(module);
+  if (!pending) {
+    pending = importAndRegisterModuleResources(module);
+    pendingModuleLoads.set(module, pending);
+  }
+
+  try {
+    await pending;
+  } finally {
+    pendingModuleLoads.delete(module);
   }
 };
 
@@ -434,7 +499,7 @@ export const handleRequestResource = async (
     child.send({
       type: SHARED_RESOURCE_MESSAGE_TYPES.RESOURCE_RESULT,
       name: message.name,
-      value: entry.state,
+      value: encodeArg(entry.state),
       rpcs,
       id: message.id,
     } satisfies IPCResourceResultMessage);
@@ -493,8 +558,8 @@ export const handleRemoteProcedureCall = async (
       type: SHARED_RESOURCE_MESSAGE_TYPES.REMOTE_PROCEDURE_CALL_RESULT,
       id: message.id,
       value: {
-        result,
-        latest: state,
+        result: encodeArg(result),
+        latest: encodeArg(state) as Record<string, unknown>,
         mutatedArgs: callArgs.map(encodeArg),
       },
     } satisfies IPCResponse);
@@ -505,6 +570,27 @@ export const handleRemoteProcedureCall = async (
       error: error instanceof Error ? error.message : String(error),
     } satisfies IPCResponse);
   }
+};
+
+const applyRpcResult = (
+  target: Record<string, unknown>,
+  rpcs: string[],
+  args: unknown[],
+  rpcResult: NonNullable<IPCRemoteProcedureCallResultMessage['value']>
+) => {
+  const decodedMutatedArgs = rpcResult.mutatedArgs.map(decodeArg);
+
+  for (let i = 0; i < args.length; i++)
+    writeBack(args[i], decodedMutatedArgs[i]);
+
+  const decodedLatest = decodeArg(rpcResult.latest) as Record<string, unknown>;
+
+  if (decodedLatest && typeof decodedLatest === 'object') {
+    for (const rpcKey of rpcs) delete decodedLatest[rpcKey];
+    writeBack(target, decodedLatest);
+  }
+
+  return decodeArg(rpcResult.result);
 };
 
 const constructSharedResourceWithRPCs = (
@@ -519,19 +605,7 @@ const constructSharedResourceWithRPCs = (
       if (typeof prop === 'string' && rpcs.includes(prop)) {
         return async (...args: unknown[]) => {
           const rpcResult = await remoteProcedureCall(name, prop, args);
-          const decodedMutatedArgs = rpcResult.mutatedArgs.map(decodeArg);
-
-          for (let i = 0; i < args.length; i++)
-            writeBack(args[i], decodedMutatedArgs[i]);
-
-          for (const rpcKey of rpcs) {
-            if (rpcKey in rpcResult.latest) {
-              delete rpcResult.latest[rpcKey];
-            }
-          }
-
-          Object.assign(target, rpcResult.latest);
-          return rpcResult.result;
+          return applyRpcResult(target, rpcs, args, rpcResult);
         };
       }
 

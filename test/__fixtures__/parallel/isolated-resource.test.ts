@@ -2,7 +2,7 @@ import { assert, test, waitForExpectedResult } from 'poku';
 import { resource } from '../../../src/index.js';
 import { FlagContext } from '../counter.js';
 
-test('Test second resource only', async () => {
+export const result = test('Test second resource only', async () => {
   const flag = await resource.use(FlagContext);
 
   await waitForExpectedResult(flag.isActive, true);

@@ -1,6 +1,6 @@
 export class ResourceRegistry<T> {
   private registry: Record<string, T> = Object.create(null);
-  private isRegistering = false;
+  private registeringDepth = 0;
 
   register(name: string, entry: T) {
     this.registry[name] = entry;
@@ -18,14 +18,19 @@ export class ResourceRegistry<T> {
     for (const key in this.registry)
       if (Object.prototype.hasOwnProperty.call(this.registry, key))
         delete this.registry[key];
+    this.registeringDepth = 0;
   }
 
   getIsRegistering() {
-    return this.isRegistering;
+    return this.registeringDepth > 0;
   }
 
   setIsRegistering(value: boolean) {
-    this.isRegistering = value;
+    if (value) {
+      this.registeringDepth++;
+    } else {
+      this.registeringDepth = Math.max(0, this.registeringDepth - 1);
+    }
   }
 
   getRegistry() {

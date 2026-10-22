@@ -9,7 +9,13 @@ export const ServerContext = resource.create(
       res.end(JSON.stringify({ solution: 2 }));
     });
 
-    await new Promise<void>((resolve) => server.listen(0, resolve));
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, () => {
+        server.off('error', reject);
+        resolve();
+      });
+    });
     const { port } = server.address() as AddressInfo;
 
     return {

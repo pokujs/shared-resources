@@ -40,6 +40,21 @@ test('ResourceRegistry', () => {
       false,
       'State updated to false'
     );
+
+    registry.setIsRegistering(true);
+    registry.setIsRegistering(true);
+    registry.setIsRegistering(false);
+    assert.strictEqual(
+      registry.getIsRegistering(),
+      true,
+      'Nested registration stays true until outer scope exits'
+    );
+    registry.setIsRegistering(false);
+    assert.strictEqual(
+      registry.getIsRegistering(),
+      false,
+      'Nested registration returns to false when depth reaches 0'
+    );
   });
 
   test('should return the entire registry', () => {
